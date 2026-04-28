@@ -8,7 +8,7 @@ const AdmZip = require('adm-zip');
 const config = require('../lib/config');
 
 const SKILLS_DIR = path.join(os.homedir(), '.tts-demo', 'skills');
-const CLAUDE_SKILLS_LINK = path.join(os.homedir(), '.claude', 'skills', 'tts-demo');
+const CLAUDE_SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills');
 
 function download(url) {
   return new Promise((resolve, reject) => {
@@ -36,32 +36,42 @@ async function installSkills() {
   const zip = new AdmZip(buf);
   const entries = zip.getEntries();
 
-  // 清空目标目录并重新写入
+  // 清空并重建本地 skills 目录
   fs.rmSync(SKILLS_DIR, { recursive: true, force: true });
   fs.mkdirSync(SKILLS_DIR, { recursive: true });
 
-  const installed = [];
+  // 提取 <skill-name>/SKILL.md 结构（zip 内顶层目录是仓库名，跳过它）
+  const skillDirs = new Set();
   for (const entry of entries) {
-    if (entry.isDirectory) continue;
-    if (!entry.entryName.endsWith('.md')) continue;
-    const filename = path.basename(entry.entryName);
-    fs.writeFileSync(path.join(SKILLS_DIR, filename), entry.getData());
-    installed.push(filename.replace('.md', ''));
+    // entryName 格式: tts-demo-skills-main/<skill-dir>/SKILL.md
+    const parts = entry.entryName.split('/');
+    if (parts.length < 3) continue;              // 跳过顶层目录本身
+    if (!entry.entryName.endsWith('SKILL.md')) continue;
+
+    const skillName = parts[1];                  // e.g. tts-create-product
+    const skillDir = path.join(SKILLS_DIR, skillName);
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, 'SKILL.md'), entry.getData());
+    skillDirs.add(skillName);
   }
 
-  if (installed.length === 0) {
-    throw new Error('Skills 仓库中未找到 .md 文件');
+  if (skillDirs.size === 0) {
+    throw new Error('Skills 仓库中未找到 <skill-name>/SKILL.md 文件');
   }
 
-  // 创建 symlink 到 ~/.claude/skills/tts-demo
-  fs.mkdirSync(path.dirname(CLAUDE_SKILLS_LINK), { recursive: true });
-  try { fs.rmSync(CLAUDE_SKILLS_LINK, { recursive: true, force: true }); } catch {}
-  fs.symlinkSync(SKILLS_DIR, CLAUDE_SKILLS_LINK);
+  // 为每个 skill 目录在 ~/.claude/skills/ 下创建 symlink
+  fs.mkdirSync(CLAUDE_SKILLS_DIR, { recursive: true });
+  for (const skillName of skillDirs) {
+    const link = path.join(CLAUDE_SKILLS_DIR, skillName);
+    const target = path.join(SKILLS_DIR, skillName);
+    try { fs.rmSync(link, { recursive: true, force: true }); } catch {}
+    fs.symlinkSync(target, link);
+  }
 
   console.log(`✓ Skills 已安装到 ${SKILLS_DIR}`);
-  console.log(`✓ Symlink: ${CLAUDE_SKILLS_LINK}\n`);
-  console.log(`  已安装 ${installed.length} 个 Skills:`);
-  for (const name of installed) console.log(`  - ${name}`);
+  console.log(`✓ Symlinks 已创建到 ${CLAUDE_SKILLS_DIR}\n`);
+  console.log(`  已安装 ${skillDirs.size} 个 Skills:`);
+  for (const name of skillDirs) console.log(`  - ${name}`);
   console.log('\n  重启 Claude Code 后即可使用\n');
 }
 
