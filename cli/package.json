@@ -1,0 +1,24 @@
+{
+  "name": "tts-demo-cli",
+  "version": "0.1.0",
+  "description": "TTS AgentReady CLI Demo",
+  "main": "src/index.js",
+  "bin": {
+    "tts-demo": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "files": [
+    "src/"
+  ],
+  "dependencies": {
+    "commander": "^12.0.0",
+    "keytar": "^7.9.0",
+    "open": "^8.4.2",
+    "adm-zip": "^0.5.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
