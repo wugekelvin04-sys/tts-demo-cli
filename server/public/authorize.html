@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTS Demo — 授权</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .card{background:white;border-radius:12px;padding:40px;width:420px;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+    .brand{font-size:12px;color:#999;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+    h1{font-size:22px;color:#111;margin-bottom:6px}
+    .sub{color:#666;font-size:14px;margin-bottom:28px;line-height:1.5}
+    .app-name{font-weight:600;color:#0066ff}
+    .scopes{background:#f6f8ff;border-radius:8px;padding:16px;margin-bottom:24px}
+    .scopes h3{font-size:13px;color:#666;margin-bottom:10px}
+    .scope-item{display:flex;align-items:center;gap:8px;padding:6px 0;font-size:14px;color:#333}
+    .scope-item::before{content:"✓";color:#52c41a;font-weight:600}
+    .btn{width:100%;padding:12px;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;transition:background .15s}
+    .btn-primary{background:#52c41a;color:white}
+    .btn-primary:hover{background:#389e0d}
+    .btn-primary:disabled{background:#b7eb8f;cursor:not-allowed}
+    .status{margin-top:14px;font-size:13px;text-align:center;min-height:20px;color:#52c41a}
+    .success-icon{font-size:48px;text-align:center;margin-bottom:16px}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div id="auth-view">
+    <div class="brand">TTS Demo CLI</div>
+    <h1>授权请求</h1>
+    <p class="sub"><span class="app-name" id="app-name">应用</span> 请求以下权限访问你的 TTS Demo Shop：</p>
+    <div class="scopes">
+      <h3>请求权限</h3>
+      <div class="scope-item">products.read — 读取商品信息</div>
+      <div class="scope-item">products.write — 创建和修改商品</div>
+    </div>
+    <button class="btn btn-primary" id="auth-btn" onclick="doAuthorize()">授权</button>
+    <div class="status" id="status"></div>
+  </div>
+  <div id="success-view" class="hidden">
+    <div class="success-icon">✅</div>
+    <h1 style="text-align:center;margin-bottom:8px">授权成功</h1>
+    <p style="text-align:center;color:#666;font-size:14px">你已成功授权，可以关闭此窗口。<br>CLI 将自动完成登录。</p>
+  </div>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const userCode = params.get('code');
+  const appName = params.get('app') || '应用';
+  document.getElementById('app-name').textContent = appName;
+
+  if (!userCode) {
+    document.getElementById('status').textContent = '❌ 缺少 code 参数';
+    document.getElementById('auth-btn').disabled = true;
+  }
+
+  async function doAuthorize() {
+    const btn = document.getElementById('auth-btn');
+    const status = document.getElementById('status');
+    btn.disabled = true;
+    status.textContent = '处理中...';
+
+    try {
+      const res = await fetch('/auth/seller/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_code: userCode }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '授权失败');
+
+      document.getElementById('auth-view').classList.add('hidden');
+      document.getElementById('success-view').classList.remove('hidden');
+    } catch (err) {
+      status.textContent = '❌ ' + err.message;
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
