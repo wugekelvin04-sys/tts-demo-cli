@@ -23,7 +23,7 @@ app.use('/api/products', require('./routes/products'));
 app.use('/events', require('./routes/events'));
 app.use(express.static(path.join(__dirname, '../public')));
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 7432;
 app.listen(PORT, () => {
   console.log(`TTS Demo Server → http://localhost:${PORT}`);
 });
