@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTS Demo — 操作监控</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d0f14;color:#e0e0e0;height:100vh;display:flex;flex-direction:column}
+    .header{background:#161b22;border-bottom:1px solid #30363d;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}
+    .header-left{display:flex;align-items:center;gap:12px}
+    .logo{font-size:15px;font-weight:600;color:#e0e0e0}
+    .badge{display:flex;align-items:center;gap:5px;background:#1a2f1a;color:#52c41a;font-size:11px;padding:3px 10px;border-radius:10px}
+    .dot{width:6px;height:6px;border-radius:50%;background:#52c41a;animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;flex:1;background:#30363d;overflow:hidden}
+    .panel{background:#0d0f14;display:flex;flex-direction:column;overflow:hidden}
+    .panel-header{padding:10px 16px;background:#161b22;border-bottom:1px solid #30363d;font-size:13px;font-weight:500;color:#8b949e;letter-spacing:.5px;text-transform:uppercase}
+    .log-area{flex:1;overflow-y:auto;padding:12px 16px;font-family:'SF Mono',Monaco,'Cascadia Code',monospace;font-size:12.5px;line-height:1.6}
+    .log-line{display:flex;gap:8px;margin-bottom:2px}
+    .log-time{color:#484f58;flex-shrink:0}
+    .log-msg{color:#cdd9e5}
+    .log-success .log-msg{color:#56d364}
+    .log-connect .log-msg{color:#58a6ff}
+    .product-list{flex:1;overflow-y:auto}
+    .product-row{display:grid;grid-template-columns:1fr 2fr 1fr 1fr;padding:10px 16px;border-bottom:1px solid #21262d;font-size:13px;transition:background .1s}
+    .product-row:hover{background:#161b22}
+    .product-row.header{background:#161b22;font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;font-weight:500}
+    .price{color:#56d364}
+    .prod-id{color:#8b949e;font-family:monospace;font-size:11px}
+    .empty{flex:1;display:flex;align-items:center;justify-content:center;color:#484f58;font-size:13px}
+  </style>
+</head>
+<body>
+<div class="header">
+  <div class="header-left">
+    <div class="logo">TTS Demo — Agent 操作监控</div>
+    <div class="badge"><span class="dot"></span> 实时</div>
+  </div>
+  <div style="font-size:12px;color:#484f58" id="conn-status">连接中...</div>
+</div>
+<div class="grid">
+  <div class="panel">
+    <div class="panel-header">Agent 操作日志</div>
+    <div class="log-area" id="logs"></div>
+  </div>
+  <div class="panel">
+    <div class="panel-header">商品列表</div>
+    <div id="product-panel" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div class="empty" id="empty-msg">暂无商品，等待 Agent 创建...</div>
+      <div id="table-wrap" style="display:none;flex-direction:column;flex:1">
+        <div class="product-row header"><span>ID</span><span>名称</span><span>价格</span><span>库存</span></div>
+        <div id="product-rows" class="product-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const logsEl = document.getElementById('logs');
+  const rowsEl = document.getElementById('product-rows');
+  const emptyEl = document.getElementById('empty-msg');
+  const tableWrap = document.getElementById('table-wrap');
+  const connStatus = document.getElementById('conn-status');
+
+  function addLog(msg, cls = '') {
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const div = document.createElement('div');
+    div.className = 'log-line ' + cls;
+    div.innerHTML = `<span class="log-time">[${time}]</span><span class="log-msg">${msg}</span>`;
+    logsEl.appendChild(div);
+    logsEl.scrollTop = logsEl.scrollHeight;
+  }
+
+  function addProduct(p) {
+    emptyEl.style.display = 'none';
+    tableWrap.style.display = 'flex';
+    const row = document.createElement('div');
+    row.className = 'product-row';
+    row.innerHTML = `<span class="prod-id">${p.id}</span><span>${p.name}</span><span class="price">¥${p.price.toFixed(2)}</span><span>${p.stock}</span>`;
+    rowsEl.insertBefore(row, rowsEl.firstChild);
+  }
+
+  // SSE connection
+  const es = new EventSource('/events');
+  es.onopen = () => { connStatus.textContent = '● 已连接'; connStatus.style.color = '#56d364'; };
+  es.onerror = () => { connStatus.textContent = '○ 连接断开'; connStatus.style.color = '#f85149'; };
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === 'connected') { addLog(data.message, 'log-connect'); return; }
+    if (data.type === 'log') {
+      const isSuccess = data.message.includes('✓') || data.message.includes('成功');
+      addLog(data.message, isSuccess ? 'log-success' : '');
+      return;
+    }
+    if (data.type === 'product') { addProduct(data.product); }
+  };
+
+  // Load existing products on page load
+  fetch('/api/products').then(r => r.json()).then(({ products }) => products.forEach(addProduct));
+</script>
+</body>
+</html>
