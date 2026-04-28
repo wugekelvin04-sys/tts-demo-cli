@@ -11,8 +11,20 @@ function shortCode() {
   return 'DEMO-' + Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+function createSellerSession(app_key) {
+  const device_code = crypto.randomUUID() + '-' + crypto.randomUUID();
+  const seller_user_code = shortCode();
+  store.sellerSessions.set(device_code, {
+    user_code: seller_user_code,
+    app_key,
+    access_token: null,
+    status: 'pending',
+    created_at: Date.now(),
+  });
+  return { device_code, seller_user_code };
+}
+
 // POST /auth/partner/device
-// CLI 启动双链路，获取轮询用的 partner_device_code 和浏览器展示用的 user_code
 router.post('/partner/device', (req, res) => {
   const partner_device_code = crypto.randomUUID() + '-' + crypto.randomUUID();
   const user_code = shortCode();
@@ -31,7 +43,6 @@ router.post('/partner/device', (req, res) => {
 });
 
 // GET /auth/partner/token?code=<partner_device_code>
-// CLI 轮询；未批准返回 202，批准后返回凭证并清除 app_secret
 router.get('/partner/token', (req, res) => {
   const session = store.partnerSessions.get(req.query.code);
   if (!session) return res.status(404).json({ error: 'session_not_found' });
@@ -48,15 +59,41 @@ router.get('/partner/token', (req, res) => {
   res.json({ app_key, app_secret, seller_device_code });
 });
 
-// POST /auth/partner/approve
-// 浏览器提交 App 名称；Server 创建 app 和 seller session，返回 seller_user_code 供浏览器跳转
-router.post('/partner/approve', (req, res) => {
-  const { user_code, app_name } = req.body;
-
-  if (!user_code || !app_name || typeof app_name !== 'string' || app_name.trim().length === 0) {
+// POST /auth/login — 商家登录，任意密码均可，用户名标识商家身份
+router.post('/login', (req, res) => {
+  const { username } = req.body;
+  if (!username || typeof username !== 'string' || username.trim().length === 0) {
     return res.status(400).json({ error: 'invalid_input' });
   }
-  const trimmedAppName = app_name.trim().slice(0, 50);
+  const name = username.trim().slice(0, 50);
+
+  let seller = store.sellers.get(name);
+  if (!seller) {
+    seller = { seller_id: 'seller_' + crypto.randomBytes(6).toString('hex'), username: name, created_at: Date.now() };
+    store.sellers.set(name, seller);
+  }
+
+  res.json({ seller_id: seller.seller_id, username: seller.username });
+});
+
+// GET /auth/apps?seller_id=xxx — 返回该商家的 App 列表
+router.get('/apps', (req, res) => {
+  const { seller_id } = req.query;
+  const apps = Array.from(store.apps.values())
+    .filter(a => !seller_id || a.seller_id === seller_id)
+    .map(({ app_key, app_name, created_at }) => ({ app_key, app_name, created_at }));
+  res.json({ apps });
+});
+
+// POST /auth/partner/approve
+// 支持两种模式：
+//   新建 App: { user_code, app_name, seller_id }
+//   选现有 App: { user_code, existing_app_key }
+router.post('/partner/approve', (req, res) => {
+  const { user_code, app_name, existing_app_key, seller_id } = req.body;
+
+  if (!user_code) return res.status(400).json({ error: 'invalid_input' });
+  if (!app_name && !existing_app_key) return res.status(400).json({ error: 'invalid_input' });
 
   let partnerKey = null;
   for (const [code, s] of store.partnerSessions) {
@@ -64,37 +101,38 @@ router.post('/partner/approve', (req, res) => {
   }
   if (!partnerKey) return res.status(404).json({ error: 'session_not_found' });
 
-  const existingSession = store.partnerSessions.get(partnerKey);
-  if (existingSession.status !== 'pending') return res.status(409).json({ error: 'already_approved' });
+  const partnerSession = store.partnerSessions.get(partnerKey);
+  if (partnerSession.status !== 'pending') return res.status(409).json({ error: 'already_approved' });
 
-  const app_key = 'app_' + crypto.randomBytes(8).toString('hex');
-  const app_secret = crypto.randomBytes(32).toString('hex');
+  let app_key, app_secret, finalAppName;
 
-  store.apps.set(app_key, { app_key, app_name: trimmedAppName, created_at: Date.now() });
+  if (existing_app_key) {
+    const existingApp = store.apps.get(existing_app_key);
+    if (!existingApp) return res.status(404).json({ error: 'app_not_found' });
+    app_key = existingApp.app_key;
+    app_secret = existingApp.app_secret;
+    finalAppName = existingApp.app_name;
+  } else {
+    const trimmedName = app_name.trim().slice(0, 50);
+    if (trimmedName.length === 0) return res.status(400).json({ error: 'invalid_input' });
+    app_key = 'app_' + crypto.randomBytes(8).toString('hex');
+    app_secret = crypto.randomBytes(32).toString('hex');
+    finalAppName = trimmedName;
+    store.apps.set(app_key, { app_key, app_name: finalAppName, app_secret, seller_id: seller_id || null, created_at: Date.now() });
+  }
 
-  // 预创建 seller session（浏览器可直接跳授权页）
-  const device_code = crypto.randomUUID() + '-' + crypto.randomUUID();
-  const seller_user_code = shortCode();
-  store.sellerSessions.set(device_code, {
-    user_code: seller_user_code,
-    app_key,
-    access_token: null,
-    status: 'pending',
-    created_at: Date.now(),
-  });
+  const { device_code, seller_user_code } = createSellerSession(app_key);
 
-  const session = store.partnerSessions.get(partnerKey);
-  session.app_key = app_key;
-  session.app_secret = app_secret;
-  session.seller_device_code = device_code;
-  session.app_name = trimmedAppName;
-  session.status = 'approved';
+  partnerSession.app_key = app_key;
+  partnerSession.app_secret = app_secret;
+  partnerSession.seller_device_code = device_code;
+  partnerSession.app_name = finalAppName;
+  partnerSession.status = 'approved';
 
-  res.json({ ok: true, app_key, app_name: trimmedAppName, seller_user_code });
+  res.json({ ok: true, app_key, app_name: finalAppName, seller_user_code });
 });
 
 // GET /auth/seller/token?code=<device_code>
-// CLI 轮询；未批准返回 202，批准后返回 access_token
 router.get('/seller/token', (req, res) => {
   const session = store.sellerSessions.get(req.query.code);
   if (!session) return res.status(404).json({ error: 'session_not_found' });
@@ -108,10 +146,8 @@ router.get('/seller/token', (req, res) => {
 });
 
 // POST /auth/seller/approve
-// 浏览器点「授权」按钮
 router.post('/seller/approve', (req, res) => {
   const { user_code } = req.body;
-
   if (!user_code) return res.status(400).json({ error: 'invalid_input' });
 
   let deviceKey = null;

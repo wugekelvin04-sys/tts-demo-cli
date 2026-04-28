@@ -3,62 +3,223 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TTS Demo — 创建 App</title>
+  <title>TTS Demo — 登录授权</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}
-    .card{background:white;border-radius:12px;padding:40px;width:420px;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+    .card{background:white;border-radius:12px;padding:40px;width:460px;box-shadow:0 4px 24px rgba(0,0,0,.12)}
     .brand{font-size:12px;color:#999;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
     h1{font-size:22px;color:#111;margin-bottom:6px}
-    .sub{color:#666;font-size:14px;margin-bottom:28px;line-height:1.5}
+    .sub{color:#666;font-size:14px;margin-bottom:24px;line-height:1.5}
+    .step-hint{font-size:11px;color:#bbb;margin-bottom:16px}
     label{display:block;font-size:13px;font-weight:500;color:#333;margin-bottom:6px}
-    input{width:100%;padding:10px 14px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:14px;outline:none;transition:border-color .15s}
-    input:focus{border-color:#0066ff}
-    .btn{width:100%;padding:12px;background:#0066ff;color:white;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;margin-top:20px;transition:background .15s}
+    .field{margin-bottom:16px}
+    input[type=text],input[type=password]{width:100%;padding:10px 14px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:14px;outline:none;transition:border-color .15s}
+    input[type=text]:focus,input[type=password]:focus{border-color:#0066ff}
+    .btn{width:100%;padding:12px;background:#0066ff;color:white;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;margin-top:8px;transition:background .15s}
     .btn:hover{background:#0052cc}
     .btn:disabled{background:#b3c9ff;cursor:not-allowed}
-    .status{margin-top:14px;font-size:13px;color:#0066ff;text-align:center;min-height:20px}
+    .section-title{font-size:13px;font-weight:600;color:#333;margin-bottom:10px}
+    .app-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+    .app-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1.5px solid #e0e0e0;border-radius:8px;cursor:pointer;transition:border-color .15s,background .15s}
+    .app-item:hover{border-color:#0066ff;background:#f6f9ff}
+    .app-item.selected{border-color:#0066ff;background:#f0f5ff}
+    .app-item input[type=radio]{accent-color:#0066ff;flex-shrink:0}
+    .app-meta{flex:1;min-width:0}
+    .app-name{font-size:14px;font-weight:500;color:#111}
+    .app-key{font-size:11px;color:#999;font-family:monospace;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:#bbb;font-size:12px}
+    .divider::before,.divider::after{content:'';flex:1;height:1px;background:#e0e0e0}
+    .status{margin-top:12px;font-size:13px;color:#0066ff;text-align:center;min-height:18px}
     .err{color:#ff4d4f}
+    .hidden{display:none}
+    .user-bar{display:flex;align-items:center;justify-content:space-between;background:#f6f9ff;border-radius:8px;padding:8px 14px;margin-bottom:20px;font-size:13px}
+    .user-bar span{color:#333;font-weight:500}
+    .logout-btn{background:none;border:none;color:#0066ff;cursor:pointer;font-size:12px;padding:0}
   </style>
 </head>
 <body>
 <div class="card">
   <div class="brand">TTS Demo CLI</div>
-  <h1>创建 App</h1>
-  <p class="sub">为你的 AI Agent 创建一个 TTS Demo 应用。<br>创建完成后将自动跳转到授权页面。</p>
-  <form id="form">
-    <label for="appName">App 名称</label>
-    <input type="text" id="appName" placeholder="例如：My AI Agent" required autofocus maxlength="50">
-    <button class="btn" type="submit" id="btn">创建 App</button>
-  </form>
-  <div class="status" id="status"></div>
+
+  <!-- Step 1: 登录 -->
+  <div id="login-view">
+    <h1>商家登录</h1>
+    <p class="sub">登录后选择或创建 App，完成 AI Agent 授权。</p>
+    <div class="field">
+      <label for="username">用户名</label>
+      <input type="text" id="username" placeholder="输入你的用户名" maxlength="50" autofocus>
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <input type="password" id="password" placeholder="任意密码均可登录">
+    </div>
+    <button class="btn" id="login-btn">登录</button>
+    <div class="status err" id="login-status"></div>
+  </div>
+
+  <!-- Step 2: 选择或创建 App -->
+  <div id="app-view" class="hidden">
+    <h1>授权 App</h1>
+    <div class="user-bar">
+      <span id="user-display"></span>
+      <button class="logout-btn" onclick="logout()">切换账号</button>
+    </div>
+
+    <div id="existing-section" class="hidden">
+      <div class="section-title">选择已有 App</div>
+      <div class="app-list" id="app-list"></div>
+      <div class="divider">或创建新 App</div>
+    </div>
+
+    <div class="section-title" id="new-title">创建新 App</div>
+    <div class="field">
+      <label for="appName">App 名称</label>
+      <input type="text" id="appName" placeholder="例如：My AI Agent" maxlength="50">
+    </div>
+    <button class="btn" id="confirm-btn">确认授权</button>
+    <div class="status" id="app-status"></div>
+  </div>
 </div>
 <script>
   const params = new URLSearchParams(location.search);
   const userCode = params.get('code');
+  let currentSellerId = null;
+  let selectedAppKey = null;
+
   if (!userCode) {
-    document.getElementById('status').textContent = '❌ 缺少 code 参数，请通过 tts-demo auth login 打开此页面';
-    document.getElementById('btn').disabled = true;
+    document.getElementById('login-status').textContent = '❌ 缺少 code 参数，请通过 tts-demo auth login 打开此页面';
+    document.getElementById('login-btn').disabled = true;
   }
 
-  document.getElementById('form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById('btn');
-    const status = document.getElementById('status');
-    btn.disabled = true;
-    status.className = 'status';
-    status.textContent = '正在创建...';
+  // 登录
+  document.getElementById('login-btn').addEventListener('click', async () => {
+    const username = document.getElementById('username').value.trim();
+    if (!username) {
+      document.getElementById('login-status').textContent = '请输入用户名';
+      return;
+    }
+    document.getElementById('login-btn').disabled = true;
+    document.getElementById('login-status').textContent = '';
 
     try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password: document.getElementById('password').value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '登录失败');
+
+      currentSellerId = data.seller_id;
+      document.getElementById('user-display').textContent = `👤 ${data.username}`;
+      await showAppView();
+    } catch (err) {
+      document.getElementById('login-status').textContent = '❌ ' + err.message;
+      document.getElementById('login-btn').disabled = false;
+    }
+  });
+
+  document.getElementById('password').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('login-btn').click();
+  });
+
+  function logout() {
+    currentSellerId = null;
+    selectedAppKey = null;
+    document.getElementById('app-view').classList.add('hidden');
+    document.getElementById('login-view').classList.remove('hidden');
+    document.getElementById('login-btn').disabled = false;
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('login-status').textContent = '';
+  }
+
+  async function showAppView() {
+    document.getElementById('login-view').classList.add('hidden');
+    document.getElementById('app-view').classList.remove('hidden');
+
+    // 加载该商家的 Apps
+    const res = await fetch(`/auth/apps?seller_id=${currentSellerId}`);
+    const { apps } = await res.json();
+
+    const existingSection = document.getElementById('existing-section');
+    const appList = document.getElementById('app-list');
+    appList.innerHTML = '';
+    selectedAppKey = null;
+
+    if (apps.length > 0) {
+      existingSection.classList.remove('hidden');
+      document.getElementById('new-title').textContent = '或创建新 App';
+
+      apps.forEach((app, i) => {
+        const item = document.createElement('label');
+        item.className = 'app-item' + (i === 0 ? ' selected' : '');
+        item.innerHTML = `
+          <input type="radio" name="app" value="${app.app_key}" ${i === 0 ? 'checked' : ''}>
+          <div class="app-meta">
+            <div class="app-name">${app.app_name}</div>
+            <div class="app-key">${app.app_key}</div>
+          </div>`;
+        item.addEventListener('click', () => {
+          document.querySelectorAll('.app-item').forEach(el => el.classList.remove('selected'));
+          item.classList.add('selected');
+          selectedAppKey = app.app_key;
+          document.getElementById('appName').value = '';
+        });
+        appList.appendChild(item);
+      });
+
+      selectedAppKey = apps[0].app_key;
+
+      document.getElementById('appName').addEventListener('focus', () => {
+        document.querySelectorAll('input[name=app]').forEach(r => r.checked = false);
+        document.querySelectorAll('.app-item').forEach(el => el.classList.remove('selected'));
+        selectedAppKey = null;
+      });
+    } else {
+      existingSection.classList.add('hidden');
+      document.getElementById('new-title').textContent = '创建新 App';
+    }
+
+    document.getElementById('appName').focus();
+  }
+
+  // 确认授权
+  document.getElementById('confirm-btn').addEventListener('click', async () => {
+    const appName = document.getElementById('appName').value.trim();
+    if (!selectedAppKey && !appName) {
+      const s = document.getElementById('app-status');
+      s.className = 'status err';
+      s.textContent = '请选择已有 App 或填写新 App 名称';
+      return;
+    }
+
+    const btn = document.getElementById('confirm-btn');
+    const status = document.getElementById('app-status');
+    btn.disabled = true;
+    status.className = 'status';
+    status.textContent = '处理中...';
+
+    try {
+      const body = { user_code: userCode };
+      if (selectedAppKey) {
+        body.existing_app_key = selectedAppKey;
+      } else {
+        body.app_name = appName;
+        body.seller_id = currentSellerId;
+      }
+
       const res = await fetch('/auth/partner/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_code: userCode, app_name: document.getElementById('appName').value.trim() }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || '创建失败');
+      if (!data.ok) throw new Error(data.error || '操作失败');
 
-      status.textContent = `✓ App 创建成功（${data.app_key}），正在跳转到授权页...`;
+      const action = selectedAppKey ? '已选择' : '已创建';
+      status.textContent = `✓ ${action} App「${data.app_name}」，正在跳转授权页...`;
       setTimeout(() => {
         location.href = `/authorize.html?code=${data.seller_user_code}&app=${encodeURIComponent(data.app_name)}`;
       }, 800);
