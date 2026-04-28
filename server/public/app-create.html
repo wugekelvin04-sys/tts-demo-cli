@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TTS Demo — 创建 App</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;display:flex;align-items:center;justify-content:center;min-height:100vh}
+    .card{background:white;border-radius:12px;padding:40px;width:420px;box-shadow:0 4px 24px rgba(0,0,0,.12)}
+    .brand{font-size:12px;color:#999;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+    h1{font-size:22px;color:#111;margin-bottom:6px}
+    .sub{color:#666;font-size:14px;margin-bottom:28px;line-height:1.5}
+    label{display:block;font-size:13px;font-weight:500;color:#333;margin-bottom:6px}
+    input{width:100%;padding:10px 14px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:14px;outline:none;transition:border-color .15s}
+    input:focus{border-color:#0066ff}
+    .btn{width:100%;padding:12px;background:#0066ff;color:white;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;margin-top:20px;transition:background .15s}
+    .btn:hover{background:#0052cc}
+    .btn:disabled{background:#b3c9ff;cursor:not-allowed}
+    .status{margin-top:14px;font-size:13px;color:#0066ff;text-align:center;min-height:20px}
+    .err{color:#ff4d4f}
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">TTS Demo CLI</div>
+  <h1>创建 App</h1>
+  <p class="sub">为你的 AI Agent 创建一个 TTS Demo 应用。<br>创建完成后将自动跳转到授权页面。</p>
+  <form id="form">
+    <label for="appName">App 名称</label>
+    <input type="text" id="appName" placeholder="例如：My AI Agent" required autofocus maxlength="50">
+    <button class="btn" type="submit" id="btn">创建 App</button>
+  </form>
+  <div class="status" id="status"></div>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const userCode = params.get('code');
+  if (!userCode) {
+    document.getElementById('status').textContent = '❌ 缺少 code 参数，请通过 tts-demo auth login 打开此页面';
+    document.getElementById('btn').disabled = true;
+  }
+
+  document.getElementById('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn');
+    const status = document.getElementById('status');
+    btn.disabled = true;
+    status.className = 'status';
+    status.textContent = '正在创建...';
+
+    try {
+      const res = await fetch('/auth/partner/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_code: userCode, app_name: document.getElementById('appName').value.trim() }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || '创建失败');
+
+      status.textContent = `✓ App 创建成功（${data.app_key}），正在跳转到授权页...`;
+      setTimeout(() => {
+        location.href = `/authorize.html?code=${data.seller_user_code}&app=${encodeURIComponent(data.app_name)}`;
+      }, 800);
+    } catch (err) {
+      status.className = 'status err';
+      status.textContent = '❌ ' + err.message;
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
