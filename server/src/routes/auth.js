@@ -39,10 +39,12 @@ router.get('/partner/token', (req, res) => {
     store.partnerSessions.delete(req.query.code);
     return res.status(410).json({ error: 'expired' });
   }
-  if (session.status !== 'approved') return res.status(202).json({ status: 'pending' });
+  if (session.status === 'pending') return res.status(202).json({ status: 'pending' });
+  if (session.status === 'credential_issued') return res.status(410).json({ error: 'already_issued' });
 
   const { app_key, app_secret, seller_device_code } = session;
-  session.app_secret = null; // 不长期保留 app_secret
+  session.app_secret = null;
+  session.status = 'credential_issued';
   res.json({ app_key, app_secret, seller_device_code });
 });
 
@@ -51,16 +53,24 @@ router.get('/partner/token', (req, res) => {
 router.post('/partner/approve', (req, res) => {
   const { user_code, app_name } = req.body;
 
+  if (!user_code || !app_name || typeof app_name !== 'string' || app_name.trim().length === 0) {
+    return res.status(400).json({ error: 'invalid_input' });
+  }
+  const trimmedAppName = app_name.trim().slice(0, 50);
+
   let partnerKey = null;
   for (const [code, s] of store.partnerSessions) {
     if (s.user_code === user_code) { partnerKey = code; break; }
   }
   if (!partnerKey) return res.status(404).json({ error: 'session_not_found' });
 
+  const existingSession = store.partnerSessions.get(partnerKey);
+  if (existingSession.status !== 'pending') return res.status(409).json({ error: 'already_approved' });
+
   const app_key = 'app_' + crypto.randomBytes(8).toString('hex');
   const app_secret = crypto.randomBytes(32).toString('hex');
 
-  store.apps.set(app_key, { app_key, app_name, created_at: Date.now() });
+  store.apps.set(app_key, { app_key, app_name: trimmedAppName, created_at: Date.now() });
 
   // 预创建 seller session（浏览器可直接跳授权页）
   const device_code = crypto.randomUUID() + '-' + crypto.randomUUID();
@@ -77,10 +87,10 @@ router.post('/partner/approve', (req, res) => {
   session.app_key = app_key;
   session.app_secret = app_secret;
   session.seller_device_code = device_code;
-  session.app_name = app_name;
+  session.app_name = trimmedAppName;
   session.status = 'approved';
 
-  res.json({ ok: true, app_key, app_name, seller_user_code });
+  res.json({ ok: true, app_key, app_name: trimmedAppName, seller_user_code });
 });
 
 // GET /auth/seller/token?code=<device_code>
@@ -101,6 +111,8 @@ router.get('/seller/token', (req, res) => {
 // 浏览器点「授权」按钮
 router.post('/seller/approve', (req, res) => {
   const { user_code } = req.body;
+
+  if (!user_code) return res.status(400).json({ error: 'invalid_input' });
 
   let deviceKey = null;
   for (const [code, s] of store.sellerSessions) {
